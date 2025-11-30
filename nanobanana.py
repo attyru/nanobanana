@@ -680,7 +680,7 @@ class NanobananaChatWidget(QWidget):
         f.addRow("Image Size (Gemini 3+):", sz)
         
         ar = QComboBox()
-        ar.addItems(["Canvas (Native)", "1:1", "2:3", "3:2", "3:4", "4:3", "16:9", "21:9"])
+        ar.addItems(["Canvas (Native)", "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"])
         ar.setCurrentText(self.settings.get("aspect_ratio", "Canvas (Native)"))
         f.addRow("AR Strategy:", ar)
         

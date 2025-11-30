@@ -72,8 +72,11 @@ class TestGeminiClient:
         client = GeminiClient("key")
         
         # Mock response chunks
+        # Configure part to have thought=False explicitly
+        part1 = MagicMock(text="Hello", inline_data=None)
+        part1.thought = False
         chunk1 = MagicMock()
-        chunk1.candidates = [MagicMock(content=MagicMock(parts=[MagicMock(text="Hello", inline_data=None)]))]
+        chunk1.candidates = [MagicMock(content=MagicMock(parts=[part1]))]
         
         img_bytes = io.BytesIO()
         Image.new('RGB', (10, 10)).save(img_bytes, format='PNG')
@@ -82,7 +85,9 @@ class TestGeminiClient:
         chunk2 = MagicMock()
         inline_data = MagicMock()
         inline_data.data = img_bytes.read()
-        chunk2.candidates = [MagicMock(content=MagicMock(parts=[MagicMock(text=None, inline_data=inline_data)]))]
+        part2 = MagicMock(text=None, inline_data=inline_data)
+        part2.thought = False
+        chunk2.candidates = [MagicMock(content=MagicMock(parts=[part2]))]
         
         stream = [chunk1, chunk2]
         results = list(client._stream_handler(stream))
@@ -95,6 +100,42 @@ class TestGeminiClient:
         # Check raw parts (3rd element)
         assert results[0][2].text == "Hello"
         assert results[1][2].inline_data == inline_data
+
+    # ... (other tests) ...
+
+    def test_send_prompt_success_updates_history(self, mock_genai_client):
+        client = GeminiClient("key")
+        mock_client_instance = mock_genai_client.return_value
+        
+        # Mock stream to yield text "World" using REAL types.Part to pass validation
+        # We need to mock the structure returned by generate_content_stream
+        # The stream returns GenerateContentResponse chunks.
+        
+        # Creating a real Part object requires importing types
+        from google.genai import types
+        real_part = types.Part(text="World")
+        
+        # We can still wrap it in a MagicMock structure for the chunk/candidate hierarchy
+        # BUT _stream_handler iterates through candidate.content.parts
+        chunk = MagicMock()
+        # We need to make sure the part we yield is compatible with what _stream_handler expects
+        # _stream_handler expects objects with .text, .inline_data, .thought attributes
+        # types.Part has these (thought might be missing on older SDK versions but we check getattr)
+        
+        # Let's mock the chunk structure but use a real Part for the inner data
+        chunk.candidates = [MagicMock(content=MagicMock(parts=[real_part]))]
+        
+        mock_client_instance.models.generate_content_stream.return_value = [chunk]
+
+        results = list(client.send_prompt("Hello", [], 123, "model", None))
+        
+        # Check yield
+        assert results[0][0] == "World"
+        
+        # Check History: User + Model
+        assert len(client.history) == 2
+        assert client.history[0].parts[0].text == "Hello"
+        assert client.history[1].parts[0].text == "World"
 
     def test_stream_handler_error_503(self, mock_genai_client):
         client = GeminiClient("key")
@@ -125,8 +166,12 @@ class TestGeminiClient:
         mock_client_instance = mock_genai_client.return_value
         
         # Mock stream to yield text "World"
+        # Use real types.Part to satisfy Pydantic validation in send_prompt
+        from google.genai import types
+        real_part = types.Part(text="World")
+        
         chunk = MagicMock()
-        chunk.candidates = [MagicMock(content=MagicMock(parts=[MagicMock(text="World", inline_data=None)]))]
+        chunk.candidates = [MagicMock(content=MagicMock(parts=[real_part]))]
         mock_client_instance.models.generate_content_stream.return_value = [chunk]
 
         results = list(client.send_prompt("Hello", [], 123, "model", None))
