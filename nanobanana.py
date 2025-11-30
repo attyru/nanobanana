@@ -183,7 +183,7 @@ class GenerationWorker(QThread):
     error_signal = pyqtSignal(str)
     progress_signal = pyqtSignal(str)
 
-    def __init__(self, client: GeminiClient, prompt: str, images: List[Image.Image], seed: int, model: str, aspect_ratio: str, batch_count: int):
+    def __init__(self, client: GeminiClient, prompt: str, images: List[Image.Image], seed: int, model: str, aspect_ratio: str, batch_count: int, image_size: str = "1K"):
         super().__init__()
         self.client = client
         self.prompt = prompt
@@ -192,6 +192,7 @@ class GenerationWorker(QThread):
         self.model = model
         self.aspect_ratio = aspect_ratio
         self.batch_count = batch_count
+        self.image_size = image_size
 
     def run(self) -> None:
         if not self.client: return
@@ -208,9 +209,9 @@ class GenerationWorker(QThread):
                 
                 # First image usually updates context (Chat History), subsequent are variations (Stateless)
                 if i == 0:
-                    stream = self.client.send_prompt(self.prompt, self.images, sid, self.model, self.aspect_ratio)
+                    stream = self.client.send_prompt(self.prompt, self.images, sid, self.model, self.aspect_ratio, self.image_size)
                 else:
-                    stream = self.client.generate_variation(self.prompt, self.images, sid, self.model, self.aspect_ratio)
+                    stream = self.client.generate_variation(self.prompt, self.images, sid, self.model, self.aspect_ratio, self.image_size)
                 
                 for text, img in stream:
                     if text and i == 0: 
@@ -509,7 +510,7 @@ class NanobananaChatWidget(QWidget):
         seed = random.randint(0, 2**31)
 
         self.worker = GenerationWorker(
-            self.client, txt, images, seed, self.settings.get("model"), ar_req, batch
+            self.client, txt, images, seed, self.settings.get("model"), ar_req, batch, self.settings.get("image_size", "1K")
         )
         self.worker.text_chunk_signal.connect(self.handle_text)
         self.worker.image_received_signal.connect(self.handle_image)
@@ -669,9 +670,14 @@ class NanobananaChatWidget(QWidget):
         f.addRow("API Key:", k)
         
         m = QComboBox()
-        m.addItems(["gemini-2.5-flash-image", "gemini-2.5-pro", "gemini-3-pro-preview"])
+        m.addItems(["gemini-2.5-flash-image", "gemini-2.5-pro", "gemini-3-pro-preview", "gemini-3-pro-image-preview"])
         m.setCurrentText(self.settings.get("model", "gemini-2.5-flash-image"))
         f.addRow("Model:", m)
+        
+        sz = QComboBox()
+        sz.addItems(["1K", "2K", "4K"])
+        sz.setCurrentText(self.settings.get("image_size", "1K"))
+        f.addRow("Image Size (Gemini 3+):", sz)
         
         ar = QComboBox()
         ar.addItems(["Canvas (Native)", "1:1", "2:3", "3:2", "3:4", "4:3", "16:9", "21:9"])
@@ -682,6 +688,7 @@ class NanobananaChatWidget(QWidget):
         btn.accepted.connect(lambda: [
             self.settings.set("api_key", k.text()), 
             self.settings.set("model", m.currentText()),
+            self.settings.set("image_size", sz.currentText()),
             self.settings.set("aspect_ratio", ar.currentText()),
             self.setup_api(), 
             d.accept()

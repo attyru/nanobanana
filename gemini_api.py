@@ -55,7 +55,7 @@ class GeminiClient:
     def _create_model_content(self, response_text: str) -> types.Content:
         return types.Content(role="model", parts=[types.Part(text=response_text)])
 
-    def _get_config(self, seed: int, aspect_ratio: Optional[str]) -> types.GenerateContentConfig:
+    def _get_config(self, seed: int, aspect_ratio: Optional[str], image_size: str = "1K") -> types.GenerateContentConfig:
         safety_settings = [
             types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_ONLY_HIGH"),
             types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_ONLY_HIGH"),
@@ -66,7 +66,7 @@ class GeminiClient:
         config_args = {
             "seed": seed,
             "safety_settings": safety_settings,
-            "temperature": 0.7,
+            "temperature": 1.0, # Recommended for Gemini 3
             "system_instruction": self.system_instruction,
             "response_modalities": ["TEXT"]
         }
@@ -74,12 +74,17 @@ class GeminiClient:
         if aspect_ratio:
             config_args["response_modalities"].append("IMAGE")
             ar_val = aspect_ratio.split(" ")[0]
+            
+            img_config_args = {"aspect_ratio": ar_val}
+            if image_size and image_size != "1K":
+                 img_config_args["image_size"] = image_size
+                 
             if ":" in ar_val:
-                config_args["image_config"] = types.ImageConfig(aspect_ratio=ar_val)
+                config_args["image_config"] = types.ImageConfig(**img_config_args)
 
         return types.GenerateContentConfig(**config_args)
 
-    def _stream_handler(self, stream) -> Generator[Tuple[Optional[str], Optional[Image.Image]], None, None]:
+    def _stream_handler(self, stream) -> Generator[Tuple[Optional[str], Optional[Image.Image], Optional[Any]], None, None]:
         try:
             for chunk in stream:
                 if not chunk.candidates:
@@ -97,33 +102,43 @@ class GeminiClient:
                     continue
 
                 for part in candidate.content.parts:
+                    # Check for thought flag (Gemini 3)
+                    is_thought = getattr(part, "thought", False)
+                    
+                    text_val = None
+                    img_val = None
+
                     if part.text:
-                        yield (part.text, None)
+                        text_val = part.text
                     
                     if part.inline_data:
                         try:
                             img_data = part.inline_data.data
-                            image = Image.open(io.BytesIO(img_data))
-                            yield (None, image)
+                            img_val = Image.open(io.BytesIO(img_data))
                         except Exception as e:
                             logging.error(f"Image decode error: {e}")
-                            yield ("[System: Failed to decode image]", None)
+                            text_val = "[System: Failed to decode image]"
+                    
+                    # Yield for UI (masked if thought), and raw part for History
+                    yield (None if is_thought else text_val, None if is_thought else img_val, part)
                             
         except Exception as e:
             logging.error(f"Stream iteration error: {e}")
             if "503" in str(e) or "overloaded" in str(e).lower():
-                yield ("\n[System: Google AI Model is overloaded (503). Please wait a moment and try again.]", None)
+                yield ("\n[System: Google AI Model is overloaded (503). Please wait a moment and try again.]", None, None)
             else:
-                yield (f"\n[System: Network Error - {str(e)}]", None)
+                yield (f"\n[System: Network Error - {str(e)}]", None, None)
 
-    def send_prompt(self, prompt: str, images: List[Image.Image], seed: int, model: str, aspect_ratio: str) -> Generator[Tuple[Optional[str], Optional[Image.Image]], None, None]:
+    def send_prompt(self, prompt: str, images: List[Image.Image], seed: int, model: str, aspect_ratio: str, image_size: str = "1K") -> Generator[Tuple[Optional[str], Optional[Image.Image]], None, None]:
         user_content = self._create_user_content(prompt, images)
         request_history = self.history + [user_content]
         
-        config = self._get_config(seed, aspect_ratio)
+        config = self._get_config(seed, aspect_ratio, image_size)
         logging.info(f"Sending Prompt. History: {len(self.history)} turns.")
 
         full_text = ""
+        collected_parts = []
+        
         try:
             stream = self.client.models.generate_content_stream(
                 model=model,
@@ -131,12 +146,14 @@ class GeminiClient:
                 config=config
             )
             
-            for text, img in self._stream_handler(stream):
+            for text, img, part in self._stream_handler(stream):
                 if text: full_text += text
+                if part: collected_parts.append(part)
                 yield (text, img)
             
-            if full_text or len(self.history) == 0:
-                model_content = self._create_model_content(full_text)
+            if collected_parts:
+                # Reconstruct content from ALL parts to preserve Thought Signatures (Gemini 3)
+                model_content = types.Content(role="model", parts=collected_parts)
                 self.history.append(user_content)
                 self.history.append(model_content)
                 
@@ -144,11 +161,11 @@ class GeminiClient:
             logging.error(f"Generation Failed: {e}")
             yield (f"[System: Setup Error - {str(e)}]", None)
 
-    def generate_variation(self, prompt: str, images: List[Image.Image], seed: int, model: str, aspect_ratio: str) -> Generator[Tuple[Optional[str], Optional[Image.Image]], None, None]:
+    def generate_variation(self, prompt: str, images: List[Image.Image], seed: int, model: str, aspect_ratio: str, image_size: str = "1K") -> Generator[Tuple[Optional[str], Optional[Image.Image]], None, None]:
         user_content = self._create_user_content(prompt, images)
         request_history = self.history + [user_content]
         
-        config = self._get_config(seed, aspect_ratio)
+        config = self._get_config(seed, aspect_ratio, image_size)
         logging.info(f"Generating Variation. Seed: {seed}")
 
         try:
@@ -157,7 +174,8 @@ class GeminiClient:
                 contents=request_history,
                 config=config
             )
-            yield from self._stream_handler(stream)
+            for text, img, part in self._stream_handler(stream):
+                yield (text, img)
         except Exception as e:
             logging.error(f"Variation Failed: {e}")
             yield (f"[System: Variation Error - {str(e)}]", None)

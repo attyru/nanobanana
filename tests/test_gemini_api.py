@@ -47,14 +47,22 @@ class TestGeminiClient:
     def test_get_config(self, mock_genai_client):
         client = GeminiClient("key")
         
-        # Test with Aspect Ratio
-        config = client._get_config(123, "16:9 (Landscape)")
+        # Test with Aspect Ratio and Image Size
+        config = client._get_config(123, "16:9 (Landscape)", "2K")
         assert config.seed == 123
         assert config.response_modalities == ["TEXT", "IMAGE"]
         assert config.image_config.aspect_ratio == "16:9"
-        assert config.temperature == 0.7
+        assert config.image_config.image_size == "2K"
+        assert config.temperature == 1.0
         assert len(config.safety_settings) == 4
         
+        # Test default Image Size
+        config_default = client._get_config(123, "1:1")
+        # 1K is default, so it might not be in the config if I filtered it out?
+        # My code: if image_size and image_size != "1K": img_config_args["image_size"] = image_size
+        # So it should NOT have image_size set
+        assert not hasattr(config_default.image_config, 'image_size') or config_default.image_config.image_size is None
+
         # Test without Aspect Ratio
         config_no_ar = client._get_config(456, None)
         assert config_no_ar.response_modalities == ["TEXT"]
@@ -80,8 +88,13 @@ class TestGeminiClient:
         results = list(client._stream_handler(stream))
         
         assert len(results) == 2
+        # Check text
         assert results[0][0] == "Hello"
+        # Check image
         assert isinstance(results[1][1], Image.Image)
+        # Check raw parts (3rd element)
+        assert results[0][2].text == "Hello"
+        assert results[1][2].inline_data == inline_data
 
     def test_stream_handler_error_503(self, mock_genai_client):
         client = GeminiClient("key")
