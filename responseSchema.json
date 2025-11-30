@@ -1,0 +1,120 @@
+{
+	"type": "object",
+	"title": "UniversalImagePrompt",
+	"description": "A structured, model-agnostic prompt description for text-to-image generation.",
+	"properties": {
+		"concept": {
+			"type": "string",
+			"description": "Very short summary of the main idea (1 short phrase)."
+		},
+		"scene": {
+			"type": "object",
+			"description": "What is happening, where, and with what key elements.",
+			"properties": {
+				"setting": {
+					"type": "string",
+					"description": "Environment or location (city street, forest, spaceship bridge, fantasy castle hall, abstract void, etc.)."
+				},
+				"time_of_day": {
+					"type": "string",
+					"description": "Time and ambience: dawn, golden hour, night, neon-lit, overcast, etc."
+				},
+				"key_elements": {
+					"type": "array",
+					"description": "Important objects, characters, creatures, or landmarks that must appear.",
+					"items": {
+						"type": "string"
+					}
+				},
+				"action": {
+					"type": "string",
+					"description": "Short description of what is happening in the scene. Leave empty if static."
+				}
+			},
+			"additionalProperties": false
+		},
+		"style": {
+			"type": "object",
+			"description": "Visual style and mood.",
+			"properties": {
+				"mood_keywords": {
+					"type": "array",
+					"description": "Mood/adjectives: dreamy, dark, epic, cozy, surreal, cyberpunk, whimsical, etc.",
+					"items": {
+						"type": "string"
+					}
+				},
+				"art_style": {
+					"type": "string",
+					"description": "Overall style: photorealistic, cinematic, digital painting, anime, pixel art, lowpoly, oil painting, concept art, etc."
+				},
+				"color_palette": {
+					"type": "string",
+					"description": "Dominant colors/palette: warm oranges and reds, cold blues, neon, pastel, monochrome, etc."
+				},
+				"influences": {
+					"type": "array",
+					"description": "Optional references: 'Studio Ghibli-like', 'dark fantasy', 'sci-fi concept art', etc. No direct copyrighted names if avoidable.",
+					"items": {
+						"type": "string"
+					}
+				}
+			},
+			"additionalProperties": false
+		},
+		"composition": {
+			"type": "object",
+			"description": "How the image is framed and composed.",
+			"properties": {
+				"framing": {
+					"type": "string",
+					"description": "Wide shot, mid shot, close-up, top-down, isometric, etc."
+				},
+				"focus": {
+					"type": "string",
+					"description": "What should be in focus or emphasized."
+				},
+				"depth_of_field": {
+					"type": "string",
+					"description": "Shallow DOF with blurred background, deep focus, etc."
+				},
+				"additional_notes": {
+					"type": "string",
+					"description": "Extra composition hints: symmetry, rule of thirds, leading lines, minimalism, cluttered detail, etc."
+				}
+			},
+			"additionalProperties": false
+		},
+		"technical": {
+			"type": "object",
+			"description": "Technical preferences that are model-agnostic.",
+			"properties": {
+				"render_quality": {
+					"type": "string",
+					"description": "Overall quality: high detail, ultra-detailed, painterly, sketchy, etc."
+				},
+				"aspect_ratio_hint": {
+					"type": "string",
+					"description": "Desired aspect ratio or orientation, e.g. '3:4 vertical', '16:9 wide', '1:1 square'. This is a hint, not a command."
+				},
+				"avoid": {
+					"type": "array",
+					"description": "What should NOT appear (e.g., 'no text', 'no watermark', 'no frame', etc.).",
+					"items": {
+						"type": "string"
+					}
+				}
+			},
+			"additionalProperties": false
+		},
+		"final_prompt": {
+			"type": "string",
+			"description": "Single coherent English description combining all important details from this JSON, ready to be used as a text prompt. No JSON/meta references."
+		}
+	},
+	"required": [
+		"concept",
+		"final_prompt"
+	],
+	"additionalProperties": false
+}

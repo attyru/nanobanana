@@ -1,0 +1,9 @@
+__pycache__/
+.pytest_cache/
+*.log
+*.zip
+release/
+settings.json
+.DS_Store
+.vscode/
+.idea/
